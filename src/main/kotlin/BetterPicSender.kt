@@ -6,11 +6,10 @@ import net.mamoe.mirai.event.GlobalEventChannel
 import net.mamoe.mirai.event.events.BotInvitedJoinGroupRequestEvent
 import net.mamoe.mirai.event.events.FriendMessageEvent
 import net.mamoe.mirai.event.events.GroupMessageEvent
+import net.mamoe.mirai.contact.Group
 import net.mamoe.mirai.event.events.NewFriendRequestEvent
 import net.mamoe.mirai.message.data.*
-import net.mamoe.mirai.message.data.Image.Key.queryUrl
 import net.mamoe.mirai.utils.info
-import java.net.URL
 import org.axix.mirai.plugin.BetterPicSender.Tool.*
 import xyz.cssxsh.mirai.hibernate.*
 
@@ -33,7 +32,7 @@ object BetterPicSender : KotlinPlugin(
     JvmPluginDescription(
         id = "org.axix.mirai.plugin.BetterPicSender",
         name = "BetterPicSender",
-        version = "0.1.1"
+        version = "0.1.2"
     ) {
         author("轩晞宇-AXiX")
         info(
@@ -45,63 +44,60 @@ object BetterPicSender : KotlinPlugin(
         // author 和 info 可以删除.
     }
 ) {
-
-    private var tag:String = ""
-    private var cmd:String = ""
     //用来储存两段式存图的索引
     private var senderList = mutableMapOf<String,String>()
-    private var savepath:String = ""
     private val QuoteReply.originalMessageFromLocal: MessageChain
         get() = MiraiHibernateRecorder[source].firstOrNull()?.toMessageChain() ?: source.originalMessage
+
+    private suspend fun dowpic(g:Group,m:MessageChain,flag:String,replyFlag:Boolean = true){
+        dowall(m,senderList[flag])
+        senderList.remove(flag)
+        if(replyFlag){
+            g.sendMessage(Config.successTip)
+        }
+    }
+
     override fun onEnable() {
         logger.info { "Plugin loaded" }
         //配置文件目录 "${dataFolder.absolutePath}/"
         Config.reload()
-        cmd = Config.commands
         val eventChannel = GlobalEventChannel.parentScope(this)
         eventChannel.subscribeAlways<GroupMessageEvent>{
             //判断白名单
             if(group.id in Config.whiteGroupList){
                 val senderFlag = group.id.toString()+sender.id.toString()
                 if(senderFlag in senderList){
-                    dowall(message,senderList[senderFlag])
-                    senderList.remove(senderFlag)
-                    group.sendMessage(Config.successTip)
+                    message[ForwardMessage.Key]?.run {
+                        this.nodeList.forEach { dowpic(group,it.messageChain,senderFlag) }
+                        group.sendMessage(Config.successTip)
+                    }
+                    message[Image.Key]?.run{ dowpic(group,message,senderFlag) }
                 }else{
                     val ptext: PlainText? = message.findIsInstance<PlainText>()
                     if(ptext is PlainText){
-                        //group.sendMessage(ptext.toString())
-                        //判断是否为存图指令
-                        if(ptext.content.indexOf(cmd) == 0 ){
-                            tag = ptext.content
-                            tag = tag.substring(2,tag.length)
-                            tag = tag.replace("\\s".toRegex(),"")
-                            senderList.put(senderFlag, tag)
+                        //判断是否为存图指令，并处理得到tag
+                        if(ptext.content.indexOf(Config.commands) == 0 ){
+                            senderList.put(senderFlag, GetTag(ptext.content))
                             //如果是引用式存图
                             message[QuoteReply.Key]?.run{
-                                //group.sendMessage(originalMessageFromLocal)
-                                dowall(originalMessageFromLocal,senderList[senderFlag])
-                                senderList.remove(senderFlag)
-                                group.sendMessage(Config.successTip)
+                                //对转发消息的支持
+                                originalMessageFromLocal[ForwardMessage.Key]?.run {
+                                    this.nodeList.forEach { dowpic(group,it.messageChain,senderFlag,false) }
+                                    group.sendMessage(Config.successTip)
+                                }
+                                originalMessageFromLocal[Image.Key]?.run{ dowpic(group,originalMessageFromLocal,senderFlag) }
                             }
                             //如果是一段式存图
-                            message[Image.Key]?.run{
-                                dowall(message,senderList[senderFlag])
-                                senderList.remove(senderFlag)
-                                group.sendMessage(Config.successTip)
-                            }
+                            message[Image.Key]?.run{ dowpic(group,message,senderFlag) }
                         }
                     }
                 }
             }
             if(group.id in Config.autosaveList){
-                message.forEach{
-                    if(it is Image){
-                        if(Getext(it.imageId) in Config.dowPicType){
-                            downloadImg(URL(it.queryUrl()),it.imageId,Config.filePath+Config.autofp,5)
-                        }
-                    }
+                message[ForwardMessage.Key]?.run {
+                    this.nodeList.forEach { dowall(it.messageChain,"","auto")}
                 }
+                message[Image.Key]?.run{ dowall(message,"","auto") }
             }
         }
         eventChannel.subscribeAlways<FriendMessageEvent>{

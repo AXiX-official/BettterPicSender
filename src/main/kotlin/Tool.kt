@@ -33,28 +33,43 @@ fun downloadImg(url: URL, fileName:String, imagePath: String, tryCount: Int): St
 }
 
 //一式两份下载
-fun dow(picName:String,tag:String?,url:String){
-    val fp = File(Config.filePath + tag)
-    if  (!fp.exists()  && !fp.isDirectory())
-    {
-        fp.mkdir()
-    }
-    downloadImg(URL(url),picName, Config.filePath + Config.defaultfp,5)
-    if(tag != ""){
-        downloadImg(URL(url),picName, Config.filePath + tag,5)
+fun dow(picName:String,tag:String?,url:String,Flag:String = "cmd"){
+    when(Flag){
+        "cmd" -> {
+            downloadImg(URL(url),picName, Config.filePath + Config.defaultfp,5)
+            if(tag is String && tag != ""){
+                val fp = File(Config.filePath + tag)
+                if  (!fp.exists()  && !fp.isDirectory())
+                {
+                    fp.mkdir()
+                }
+                downloadImg(URL(url),picName, Config.filePath + tag,5)
+            }
+        }
+        "auto" -> {
+            downloadImg(URL(url),picName, Config.filePath + Config.autofp,5)
+        }
     }
 }
 
 //一次性下载整个发言中的图片
-suspend fun dowall(msg: MessageChain, tag: String?) {
+suspend fun dowall(msg: MessageChain, tag: String?,Flag: String = "cmd") {
     msg.forEach {
         if (it is Image) {
             if (Getext(it.imageId) in Config.dowPicType) {
-                dow(it.imageId, tag, it.queryUrl())
+                dow(it.imageId, tag, it.queryUrl(),Flag)
+            }else if(Getext(it.imageId) == ".mirai"){
+                dow(it.imageId+".jpg", tag, it.queryUrl(),Flag)
             }
         }
     }
 }
 fun Getext(id:String):String{
     return  id.substring(id.indexOf('}')+1,id.length)
+}
+
+//获取tag并预处理
+fun GetTag(rawcontect:String):String{
+    var tag = rawcontect.substring(2,rawcontect.length)
+    return tag.replace("\\s".toRegex(),"")
 }
