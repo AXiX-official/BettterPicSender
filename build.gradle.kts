@@ -7,9 +7,18 @@ plugins {
 }
 
 group = "org.axix"
-version = "0.1.0"
+version = "0.1.1"
 
 repositories {
     maven("https://maven.aliyun.com/repository/public") // 阿里云国内代理仓库
     mavenCentral()
+}
+
+dependencies {
+    compileOnly("xyz.cssxsh.mirai:mirai-hibernate-plugin:2.5.1")
+}
+
+// hibernate 6 和 HikariCP 5 需要 jdk11
+mirai {
+    jvmTarget = JavaVersion.VERSION_11
 }

@@ -1,4 +1,5 @@
 package org.axix.mirai.plugin.BetterPicSender
+
 import net.mamoe.mirai.console.plugin.jvm.JvmPluginDescription
 import net.mamoe.mirai.console.plugin.jvm.KotlinPlugin
 import net.mamoe.mirai.event.GlobalEventChannel
@@ -6,13 +7,12 @@ import net.mamoe.mirai.event.events.BotInvitedJoinGroupRequestEvent
 import net.mamoe.mirai.event.events.FriendMessageEvent
 import net.mamoe.mirai.event.events.GroupMessageEvent
 import net.mamoe.mirai.event.events.NewFriendRequestEvent
-import net.mamoe.mirai.message.data.Image
+import net.mamoe.mirai.message.data.*
 import net.mamoe.mirai.message.data.Image.Key.queryUrl
-import net.mamoe.mirai.message.data.PlainText
 import net.mamoe.mirai.utils.info
-import java.io.File
 import java.net.URL
 import org.axix.mirai.plugin.BetterPicSender.Tool.*
+import xyz.cssxsh.mirai.hibernate.*
 
 /**
  * 使用 kotlin 版请把
@@ -33,7 +33,7 @@ object BetterPicSender : KotlinPlugin(
     JvmPluginDescription(
         id = "org.axix.mirai.plugin.BetterPicSender",
         name = "BetterPicSender",
-        version = "0.1.0"
+        version = "0.1.1"
     ) {
         author("轩晞宇-AXiX")
         info(
@@ -41,56 +41,54 @@ object BetterPicSender : KotlinPlugin(
             
         """.trimIndent()
         )
+        dependsOn("xyz.cssxsh.mirai.plugin.mirai-hibernate-plugin", false)
         // author 和 info 可以删除.
     }
 ) {
 
     private var tag:String = ""
     private var cmd:String = ""
+    //用来储存两段式存图的索引
     private var senderList = mutableMapOf<String,String>()
     private var savepath:String = ""
-
+    private val QuoteReply.originalMessageFromLocal: MessageChain
+        get() = MiraiHibernateRecorder[source].firstOrNull()?.toMessageChain() ?: source.originalMessage
     override fun onEnable() {
         logger.info { "Plugin loaded" }
         //配置文件目录 "${dataFolder.absolutePath}/"
         Config.reload()
-        //reloadPluginConfig(Config)
         cmd = Config.commands
-        savepath =  Config.filePath
-
         val eventChannel = GlobalEventChannel.parentScope(this)
         eventChannel.subscribeAlways<GroupMessageEvent>{
             //判断白名单
             if(group.id in Config.whiteGroupList){
                 val senderFlag = group.id.toString()+sender.id.toString()
                 if(senderFlag in senderList){
-                    message.forEach{
-                        if(it is Image){
-                            val picName = it.imageId
-                            val fp = File(savepath+ senderList[senderFlag])
-                            //group.sendMessage(picName)
-                            if  (!fp.exists()  && !fp.isDirectory())
-                            {
-                                fp.mkdir()
-                            }
-                            downloadImg(URL(it.queryUrl()),picName,savepath+ Config.defaultfp,5)
-                            if(senderList[senderFlag] != ""){
-                                downloadImg(URL(it.queryUrl()),picName,savepath+ senderList[senderFlag],5)
-                            }
-                            group.sendMessage(Config.successTip)
-                        }
-                    }
+                    dowall(message,senderList[senderFlag])
                     senderList.remove(senderFlag)
+                    group.sendMessage(Config.successTip)
                 }else{
-                    message.forEach{
-                        if(it is PlainText){
-                            //如果发送的是正确的cmd
-                            if(it.content.indexOf(cmd) != -1 ){
-                                tag = it.content
-                                tag = tag.substring(2+tag.indexOf(cmd),tag.length)
-                                //group.sendMessage(tag)
-                                tag = tag.replace("\\s".toRegex(),"")
-                                senderList.put(senderFlag, tag)
+                    val ptext: PlainText? = message.findIsInstance<PlainText>()
+                    if(ptext is PlainText){
+                        //group.sendMessage(ptext.toString())
+                        //判断是否为存图指令
+                        if(ptext.content.indexOf(cmd) == 0 ){
+                            tag = ptext.content
+                            tag = tag.substring(2,tag.length)
+                            tag = tag.replace("\\s".toRegex(),"")
+                            senderList.put(senderFlag, tag)
+                            //如果是引用式存图
+                            message[QuoteReply.Key]?.run{
+                                //group.sendMessage(originalMessageFromLocal)
+                                dowall(originalMessageFromLocal,senderList[senderFlag])
+                                senderList.remove(senderFlag)
+                                group.sendMessage(Config.successTip)
+                            }
+                            //如果是一段式存图
+                            message[Image.Key]?.run{
+                                dowall(message,senderList[senderFlag])
+                                senderList.remove(senderFlag)
+                                group.sendMessage(Config.successTip)
                             }
                         }
                     }
@@ -98,7 +96,9 @@ object BetterPicSender : KotlinPlugin(
             }else if(group.id in Config.autosaveList){
                 message.forEach{
                     if(it is Image){
-                        downloadImg(URL(it.queryUrl()),it.imageId,savepath+ Config.autofp,5)
+                        if(Getext(it.imageId) in Config.dowPicType){
+                            downloadImg(URL(it.queryUrl()),it.imageId,savepath+ Config.autofp,5)
+                        }
                     }
                 }
             }
