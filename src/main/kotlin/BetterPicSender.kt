@@ -99,7 +99,6 @@ object BetterPicSender : KotlinPlugin(
                     if(it is Image){
                         if(Getext(it.imageId) in Config.dowPicType){
                             downloadImg(URL(it.queryUrl()),it.imageId,Config.filePath+Config.autofp,5)
-                            group.sendMessage(Config.successTip)
                         }
                     }
                 }
