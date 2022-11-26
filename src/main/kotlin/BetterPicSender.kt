@@ -93,11 +93,13 @@ object BetterPicSender : KotlinPlugin(
                         }
                     }
                 }
-            }else if(group.id in Config.autosaveList){
+            }
+            if(group.id in Config.autosaveList){
                 message.forEach{
                     if(it is Image){
                         if(Getext(it.imageId) in Config.dowPicType){
-                            downloadImg(URL(it.queryUrl()),it.imageId,savepath+ Config.autofp,5)
+                            downloadImg(URL(it.queryUrl()),it.imageId,Config.filePath+Config.autofp,5)
+                            group.sendMessage(Config.successTip)
                         }
                     }
                 }
